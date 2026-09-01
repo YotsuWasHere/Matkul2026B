@@ -11,8 +11,12 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="loadingScreen" class="loading-screen" aria-live="polite" aria-label="Memuat jadwal">
+    <div class="loading-spinner"></div>
+  </div>
   <div class="bg-orb orb-a"></div>
   <div class="bg-orb orb-b"></div>
+  <div class="mouse-glow" aria-hidden="true"></div>
   <div class="grain"></div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
@@ -30,9 +34,18 @@
         <div class="identity-name" id="adminNameLabel">—</div>
         <span class="role-badge">Admin/PJ</span>
       </div>
-      <button class="icon-button" id="themeToggle" type="button" aria-label="Ganti tema">
-        <span id="themeIcon">🌙</span>
-      </button>
+      <div class="theme-controls">
+        <button class="icon-button" id="themeToggle" type="button" aria-label="Ganti mode terang atau gelap" title="Mode terang / gelap">
+          <span id="themeIcon">🌙</span>
+        </button>
+        <div class="theme-picker-wrap">
+          <button class="icon-button palette-button" id="paletteToggle" type="button" aria-label="Pilih warna tema" aria-expanded="false" title="Pilih warna tema">🎨</button>
+          <div class="theme-picker hidden" id="themePicker" role="dialog" aria-label="Pilih warna tema">
+            <div class="theme-picker-title">Warna tema</div>
+            <div class="theme-swatches" id="themeSwatches"></div>
+          </div>
+        </div>
+      </div>
       <button class="header-button" id="loginButton" type="button">🔐 Login PJ</button>
       <button class="header-button hidden" id="logoutButton" type="button">↩ Logout</button>
     </div>
@@ -46,10 +59,23 @@
         <p>Mahasiswa melihat versi terbaru tanpa login. PJ dapat mengubah jadwal dasar atau menata pertemuan tertentu tanpa merusak jadwal original.</p>
       </div>
       <div class="hero-stats">
-        <div class="stat-card"><strong id="courseCount">10</strong><span>kelas / entitas</span></div>
+        <div class="stat-card"><strong id="courseCount">10</strong><span>mata kuliah</span></div>
         <div class="stat-card"><strong id="changeCount">0</strong><span>perubahan minggu ini</span></div>
-        <div class="stat-card"><strong>07–21</strong><span>timeline</span></div>
+        <div class="stat-card"><strong>Tisha F.</strong><span>PJ Kelas</span></div>
       </div>
+    </section>
+
+    <section class="category-tabs" aria-label="Jenis mata kuliah">
+      <button class="category-tab active" id="tabMKWU" type="button" data-category="MKWU">
+        <span class="tab-kicker">PAGE 01</span>
+        <strong>MKWU</strong>
+        <small id="mkwuCount">—</small>
+      </button>
+      <button class="category-tab" id="tabMKWK" type="button" data-category="MKWK">
+        <span class="tab-kicker">PAGE 02</span>
+        <strong>MKWK</strong>
+        <small id="mkwkCount">—</small>
+      </button>
     </section>
 
     <section class="week-toolbar">
@@ -103,7 +129,7 @@
       <div class="section-heading">
         <div>
           <span class="eyebrow">ADMIN / PJ</span>
-          <h2>Kelola semua kelas</h2>
+          <h2>Kelola mata kuliah</h2>
         </div>
         <span class="section-hint">Semua PJ memiliki akses penuh.</span>
       </div>

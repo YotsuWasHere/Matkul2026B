@@ -1,7 +1,18 @@
 const THEME_KEY = '2026B_THEME';
+const ACCENT_KEY = '2026B_ACCENT';
+const ACCENTS = {
+  violet: { name:'Violet', accent:'#655cf6', accent2:'#8a74ff', rgb:'101 92 246' },
+  blue: { name:'Ocean Blue', accent:'#3b82f6', accent2:'#60a5fa', rgb:'59 130 246' },
+  cyan: { name:'Cyan', accent:'#06b6d4', accent2:'#22d3ee', rgb:'6 182 212' },
+  emerald: { name:'Emerald', accent:'#10b981', accent2:'#34d399', rgb:'16 185 129' },
+  rose: { name:'Rose', accent:'#f43f5e', accent2:'#fb7185', rgb:'244 63 94' },
+  amber: { name:'Amber', accent:'#f59e0b', accent2:'#fbbf24', rgb:'245 158 11' }
+};
 const DAYS = ['Senin','Selasa','Rabu','Kamis','Jumat'];
 const MINUTES_START = 7 * 60;
 const MINUTES_END = 21 * 60;
+const CLASS_PJ = 'Tisha Farica Tsaqif';
+const CATEGORIES = { MKWK: new Set(['pancasila-067','pancasila-068','literasi-050','literasi-051']) };
 const HALF_HOUR_PX = 34;
 
 const PJS = [
@@ -34,6 +45,7 @@ let loggedInAs = null;
 let editorCourseId = null;
 let editorMode = 'course';
 let supabaseClient = null;
+let activeCategory = 'MKWU';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -57,13 +69,33 @@ function setConnectionStatus(text, isError=false){
   if(el){ el.textContent=text; el.style.color=isError?'var(--danger)':''; }
 }
 
+function normalizeSupabaseUrl(value){
+  const raw=String(value??'').trim();
+  if(!raw) throw new Error('SUPABASE_URL belum diisi di config.js.');
+  if(!/^https?:\/\//i.test(raw)) throw new Error('SUPABASE_URL harus diawali http:// atau https://.');
+
+  let u;
+  try{ u=new URL(raw); }
+  catch{ throw new Error('SUPABASE_URL tidak valid. Salin Project URL dari Supabase Dashboard → Settings → API.'); }
+
+  // URL Dashboard: https://supabase.com/dashboard/project/<ref>
+  const dashboardMatch=u.hostname==='supabase.com' ? u.pathname.match(/^\/dashboard\/project\/([a-z0-9]+)(?:\/|$)/i) : null;
+  if(dashboardMatch) return `https://${dashboardMatch[1]}.supabase.co`;
+
+  // Untuk project URL, path seperti /rest/v1 atau path lain dibuang.
+  // Supabase JS membutuhkan origin project, bukan endpoint REST.
+  return u.origin;
+}
+
 function initSupabase(){
   const cfg=window.APP_CONFIG || {};
   if(!cfg.SUPABASE_ENABLED) throw new Error('Supabase masih dinonaktifkan di config.js.');
   if(!window.supabase?.createClient) throw new Error('Supabase JS gagal dimuat. Periksa koneksi internet.');
-  if(!cfg.SUPABASE_URL || cfg.SUPABASE_URL.includes('PASTE_SUPABASE')) throw new Error('SUPABASE_URL belum diisi di config.js.');
-  if(!cfg.SUPABASE_ANON_KEY || cfg.SUPABASE_ANON_KEY.includes('PASTE_SUPABASE')) throw new Error('SUPABASE_ANON_KEY belum diisi di config.js.');
-  supabaseClient=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+  if(!cfg.SUPABASE_URL || String(cfg.SUPABASE_URL).includes('PASTE_SUPABASE')) throw new Error('SUPABASE_URL belum diisi di config.js.');
+  if(!cfg.SUPABASE_ANON_KEY || String(cfg.SUPABASE_ANON_KEY).includes('PASTE_SUPABASE')) throw new Error('SUPABASE_ANON_KEY belum diisi di config.js.');
+
+  const normalizedUrl=normalizeSupabaseUrl(cfg.SUPABASE_URL);
+  supabaseClient=window.supabase.createClient(normalizedUrl,String(cfg.SUPABASE_ANON_KEY).trim(),{auth:{persistSession:false,autoRefreshToken:false}});
 }
 
 function courseFromRow(r){
@@ -110,42 +142,120 @@ function getEffective(course,wkStart){
   return {course,moved:change.status==='Dipindahkan',date,start:change.new_start||course.start,end:change.new_end||course.end,mode:change.mode||course.mode,room:change.room??course.room,status:change.status||'Dipindahkan',change};
 }
 
+
+function isCourseInCategory(course, category){
+  return category === 'MKWK' ? CATEGORIES.MKWK.has(course.id) : !CATEGORIES.MKWK.has(course.id);
+}
+function visibleCourses(){
+  return state.courses.filter(c=>isCourseInCategory(c, activeCategory));
+}
+function findPjName(change){
+  return change?.edited_by || change?.edited_by_name || '—';
+}
+function describeChangeTiming(course, change){
+  const originalDate = change?.original_date ? parseISO(change.original_date) : getDateForCourse(course,currentWeek);
+  const newDate = change?.new_date ? parseISO(change.new_date) : originalDate;
+  const daysBetweenWeeks = (startOfWeek(newDate)-startOfWeek(originalDate))/86400000;
+  if(daysBetweenWeeks > 0){
+    return `Perubahan - Minggu depan, ${new Intl.DateTimeFormat('id-ID',{weekday:'long'}).format(newDate)}`;
+  }
+  return `Perubahan - ${new Intl.DateTimeFormat('id-ID',{weekday:'long'}).format(newDate)}`;
+}
+function groupEffectiveCourses(courses){
+  const groups = new Map();
+  for(const course of courses){
+    const e = getEffective(course,currentWeek);
+    const day = weekdayOf(e.date);
+    if(day<0 || day>4) continue;
+    const key = [course.name.trim().toLowerCase(), day, e.start, e.end, e.mode || '', e.room || ''].join('|');
+    if(!groups.has(key)) groups.set(key,{day,start:e.start,end:e.end,items:[]});
+    groups.get(key).items.push({course,e});
+  }
+  return [...groups.values()];
+}
 function render(){
   $('#weekLabel').textContent=formatRange(currentWeek); $('#changesWeekHint').textContent=formatRange(currentWeek);
-  for(let i=0;i<5;i++) $('#date-'+(i+1)).textContent=formatDayDate(addDays(currentWeek,i));
+  const today=new Date();
+  const todayKey=fmtDateISO(today);
+  for(let i=0;i<5;i++){
+    const date=addDays(currentWeek,i);
+    $('#date-'+(i+1)).textContent=formatDayDate(date);
+    const isToday=fmtDateISO(date)===todayKey;
+    const head=document.querySelector(`.day-head[data-day=\"${i+1}\"]`);
+    const col=document.querySelector(`.day-column[data-day-col=\"${i+1}\"]`);
+    head?.classList.toggle('today',isToday);
+    col?.classList.toggle('today',isToday);
+  }
   renderTimeline(); renderHistory(); renderAdmin();
   $('#courseCount').textContent=state.courses.length;
   $('#changeCount').textContent=state.changes.filter(c=>c.week_key===weekKey(currentWeek)).length;
+  $('#mkwuCount').textContent=`${new Set(state.courses.filter(c=>isCourseInCategory(c,'MKWU')).map(c=>c.name)).size} mata kuliah`;
+  $('#mkwkCount').textContent=`${new Set(state.courses.filter(c=>isCourseInCategory(c,'MKWK')).map(c=>c.name)).size} mata kuliah`;
+  $('#tabMKWU').classList.toggle('active',activeCategory==='MKWU');
+  $('#tabMKWK').classList.toggle('active',activeCategory==='MKWK');
 }
 function renderTimeline(){
   const timeAxis=$('#timeAxis'); timeAxis.innerHTML='';
-  for(let min=MINUTES_START;min<MINUTES_END;min+=30){ const label=document.createElement('div'); label.className='time-slot-label'; label.textContent=`${pad2(Math.floor(min/60))}.${pad2(min%60)}`; timeAxis.appendChild(label); }
-  $$('.day-column').forEach(col=>col.innerHTML='');
-  for(const course of state.courses){
-    const e=getEffective(course,currentWeek), day=weekdayOf(e.date); if(day<0||day>4) continue;
-    const col=document.querySelector(`[data-day-col="${day+1}"]`); if(!col) continue;
-    const block=document.createElement('div'); block.className='course-block'+(e.moved?' moved':'');
-    const top=(timeToMin(e.start)-MINUTES_START)*(HALF_HOUR_PX/30); const h=Math.max(52,(timeToMin(e.end)-timeToMin(e.start))*(HALF_HOUR_PX/30));
-    block.style.top=`${top}px`; block.style.height=`${h}px`; block.innerHTML=courseCardHtml(course,e); col.appendChild(block);
+  for(let min=MINUTES_START;min<MINUTES_END;min+=30){
+    const label=document.createElement('div'); label.className='time-slot-label';
+    label.textContent=`${pad2(Math.floor(min/60))}.${pad2(min%60)}`; timeAxis.appendChild(label);
   }
-  for(const col of $$('.day-column')) if(!col.children.length){ const empty=document.createElement('div'); empty.className='empty-day'; empty.textContent='Tidak ada kelas'; col.appendChild(empty); }
+  $$('.day-column').forEach(col=>col.innerHTML='');
+  for(const group of groupEffectiveCourses(visibleCourses())){
+    const col=document.querySelector(`[data-day-col="${group.day+1}"]`); if(!col) continue;
+    const moved=group.items.some(x=>x.e.moved);
+    const block=document.createElement('div'); block.className='course-block'+(moved?' moved':'');
+    const top=(timeToMin(group.start)-MINUTES_START)*(HALF_HOUR_PX/30);
+    const h=Math.max(52,(timeToMin(group.end)-timeToMin(group.start))*(HALF_HOUR_PX/30));
+    block.style.top=`${top}px`; block.style.height=`${h}px`; block.innerHTML=courseGroupHtml(group); col.appendChild(block);
+  }
+  for(const col of $$('.day-column')) if(!col.children.length){
+    const empty=document.createElement('div'); empty.className='empty-day'; empty.textContent='Tidak ada kelas'; col.appendChild(empty);
+  }
 }
-function courseCardHtml(course,e){
-  const code=course.code?`<div class="course-code">KODE ${escapeHtml(course.code)}</div>`:'';
-  const room=e.room?`<span>📍 ${escapeHtml(e.room)}</span>`:'';
-  const lecturer=`<span>👨‍🏫 ${escapeHtml(course.lecturer||'Dosen Pengampu —')}</span>`;
-  const status=e.moved?`<span class="course-badge moved-badge">🔄 Dipindahkan</span>`:`<span class="course-badge">✅ Tetap</span>`;
-  const mode=e.mode==='Virtual'?`<span class="course-badge">💻 Virtual</span>`:`<span class="course-badge">🏫 Tatap Muka</span>`;
-  return `<div class="course-name">${escapeHtml(course.name)}</div>${code}<div class="course-time">${formatTimeRange(e.start,e.end)}</div><div class="course-meta">${room}${room&&lecturer?' · ':''}${lecturer}</div><div class="course-badges">${status}${mode}</div>${e.moved?`<div class="course-meta" style="margin-top:6px">Original: ${escapeHtml(course.start)}–${escapeHtml(course.end)}</div>`:''}${loggedInAs?`<div class="course-actions"><button class="mini-button" data-action="edit-course" data-course-id="${escapeAttr(course.id)}">✏️ Edit</button><button class="mini-button" data-action="edit-meeting" data-course-id="${escapeAttr(course.id)}">🔄 Pertemuan</button></div>`:''}`;
+function courseGroupHtml(group){
+  const first=group.items[0];
+  const codes=group.items.map(({course})=>course.code).filter(Boolean);
+  const code=codes.length ? `<div class="course-group-code">KODE ${codes.map(escapeHtml).join('<span class="amp">&amp;</span>')}</div>` : '';
+  const room=first.e.room?`<span>📍 ${escapeHtml(first.e.room)}</span>`:'';
+  const lecturers=[...new Set(group.items.map(({course})=>course.lecturer).filter(Boolean))];
+  const lecturerText=lecturers.length ? lecturers.join(', ') : 'Dosen Pengampu —';
+  const lecturer=`<span>👨‍🏫 ${escapeHtml(lecturerText)}</span>`;
+  const status=group.items.some(x=>x.e.moved) ? '<span class="course-badge moved-badge">🔄 Dipindahkan</span>' : '<span class="course-badge">✅ Tetap</span>';
+  const mode=first.e.mode==='Virtual' ? '<span class="course-badge">💻 Virtual</span>' : '<span class="course-badge">🏫 Tatap Muka</span>';
+  const actions=loggedInAs ? `<div class="course-group-actions">${group.items.map(({course})=>`<button class="mini-button" data-action="edit-meeting" data-course-id="${escapeAttr(course.id)}">🔄 ${escapeHtml(course.code||course.name)}</button>`).join('')}</div>`:'';
+  return `<div class="course-name">${escapeHtml(first.course.name)}</div>${code}<div class="course-time">${formatTimeRange(group.start,group.end)}</div><div class="course-meta">${room}${room?' · ':''}${lecturer}</div><div class="course-badges">${status}${mode}</div>${actions}`;
 }
+
 function renderHistory(){
-  const list=$('#changeHistoryList'); const changes=state.changes.filter(c=>c.week_key===weekKey(currentWeek)).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
-  if(!changes.length){ list.innerHTML=`<div class="empty-history">Belum ada perubahan untuk minggu ${escapeHtml(formatRange(currentWeek))}. Jadwal original tetap digunakan.</div>`; return; }
-  list.innerHTML=changes.map(c=>{ const course=state.courses.find(x=>x.id===c.course_id); if(!course) return ''; const original=`${DAYS[course.day]} ${course.start}–${course.end}`; const date=c.new_date?parseISO(c.new_date):getDateForCourse(course,currentWeek); const current=`${new Intl.DateTimeFormat('id-ID',{weekday:'long'}).format(date)} ${c.new_start||course.start}–${c.new_end||course.end}`; return `<article class="history-card"><div class="history-top"><div><div class="history-title">${escapeHtml(course.name)}${course.code?` · ${escapeHtml(course.code)}`:''}</div></div><span class="history-badge">🔄 Dipindahkan</span></div><div class="history-grid"><div class="history-box"><small>Original</small><strong>${escapeHtml(original)}</strong></div><div class="history-arrow">→</div><div class="history-box"><small>Perubahan</small><strong>${escapeHtml(current)}</strong></div></div><div class="history-footer"><span>📅 Berlaku: ${escapeHtml(formatRange(currentWeek))}</span><span>${c.mode==='Virtual'?'💻 Virtual':'🏫 Tatap Muka'}</span>${c.room?`<span>📍 ${escapeHtml(c.room)}</span>`:''}<span>👤 ${escapeHtml(c.edited_by)}</span>${c.note?`<span>📝 ${escapeHtml(c.note)}</span>`:''}</div></article>`; }).join('');
+  const list=$('#changeHistoryList');
+  const changes=state.changes
+    .filter(c=>c.week_key===weekKey(currentWeek))
+    .filter(c=>state.courses.some(course=>course.id===c.course_id && isCourseInCategory(course,activeCategory)))
+    .sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
+  if(!changes.length){
+    list.innerHTML=`<div class="empty-history">Belum ada perubahan untuk ${activeCategory} pada minggu ${escapeHtml(formatRange(currentWeek))}. Jadwal original tetap digunakan.</div>`;
+    return;
+  }
+  list.innerHTML=changes.map(c=>{
+    const course=state.courses.find(x=>x.id===c.course_id); if(!course) return '';
+    const originalDate=c.original_date?parseISO(c.original_date):getDateForCourse(course,currentWeek);
+    const original=`${new Intl.DateTimeFormat('id-ID',{weekday:'long'}).format(originalDate)} ${course.start}–${course.end}`;
+    const date=c.new_date?parseISO(c.new_date):originalDate;
+    const current=`${new Intl.DateTimeFormat('id-ID',{weekday:'long'}).format(date)} ${c.new_start||course.start}–${c.new_end||course.end}`;
+    const timing=describeChangeTiming(course,c);
+    return `<article class="history-card">
+      <div class="history-top"><div><div class="history-title">${escapeHtml(course.name)}${course.code?` · ${escapeHtml(course.code)}`:''}</div></div><span class="history-badge">${escapeHtml(timing)}</span></div>
+      <div class="history-grid"><div class="history-box"><small>Original</small><strong>${escapeHtml(original)}</strong></div><div class="history-arrow">→</div><div class="history-box"><small>Perubahan</small><strong>${escapeHtml(current)}</strong></div></div>
+      <div class="history-footer"><span>📅 Berlaku: ${escapeHtml(formatRange(currentWeek))}</span><span>${c.mode==='Virtual'?'💻 Virtual':'🏫 Tatap Muka'}</span>${c.room?`<span>📍 ${escapeHtml(c.room)}</span>`:''}<span>👨‍🏫 Dosen: ${escapeHtml(course.lecturer || 'Dosen Pengampu —')}</span></div>
+      ${c.note?`<div class="history-note">📝 ${escapeHtml(c.note)}</div>`:''}
+    </article>`;
+  }).join('');
 }
+
 function renderAdmin(){
   const section=$('#adminSection'); if(!loggedInAs){ section.classList.add('hidden'); return; } section.classList.remove('hidden');
-  $('#adminGrid').innerHTML=state.courses.map(c=>`<article class="admin-course-card"><div class="admin-course-top"><div><div class="admin-course-name">${escapeHtml(c.name)}${c.code?` — ${escapeHtml(c.code)}`:''}</div><div class="admin-course-sub">${DAYS[c.day]} · ${c.start}–${c.end} · ${c.mode}</div></div><span class="role-badge">Admin</span></div><div class="admin-actions"><button class="mini-button" data-action="edit-course" data-course-id="${escapeAttr(c.id)}">✏️ Edit Jadwal</button><button class="mini-button" data-action="edit-meeting" data-course-id="${escapeAttr(c.id)}">🔄 Edit Pertemuan</button></div></article>`).join('');
+  $('#adminGrid').innerHTML=visibleCourses().map(c=>`<article class="admin-course-card"><div class="admin-course-top"><div><div class="admin-course-name">${escapeHtml(c.name)}${c.code?` — ${escapeHtml(c.code)}`:''}</div><div class="admin-course-sub">${DAYS[c.day]} · ${c.start}–${c.end} · ${c.mode}</div></div><span class="role-badge">Admin</span></div><div class="admin-actions"><button class="mini-button" data-action="edit-course" data-course-id="${escapeAttr(c.id)}">✏️ Edit Jadwal</button><button class="mini-button" data-action="edit-meeting" data-course-id="${escapeAttr(c.id)}">🔄 Edit Pertemuan</button></div></article>`).join('');
 }
 function openModal(id){ const el=document.getElementById(id); if(el) el.classList.remove('hidden'); }
 function closeModal(id){ const el=document.getElementById(id); if(el) el.classList.add('hidden'); }
@@ -190,9 +300,13 @@ async function deleteMeeting(){
   catch(err){console.error(err);showToast(`Gagal menghapus perubahan: ${err.message}`,'error');}
 }
 
-function setupTheme(){ const saved=localStorage.getItem(THEME_KEY); const prefers=window.matchMedia?.('(prefers-color-scheme: dark)').matches; applyTheme(saved||(prefers?'dark':'light'),false); }
+function setupTheme(){ const saved=localStorage.getItem(THEME_KEY); const prefers=window.matchMedia?.('(prefers-color-scheme: dark)').matches; applyTheme(saved||'dark',false); applyAccent(localStorage.getItem(ACCENT_KEY)||'violet',false); renderAccentPicker(); }
 function applyTheme(theme,save=true){ document.documentElement.dataset.theme=theme; $('#themeIcon').textContent=theme==='dark'?'☀️':'🌙'; if(save)localStorage.setItem(THEME_KEY,theme); }
 function toggleTheme(){ applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'); }
+function applyAccent(name,save=true){ const cfg=ACCENTS[name]||ACCENTS.violet; const root=document.documentElement; root.dataset.accent=name||'violet'; root.style.setProperty('--accent',cfg.accent); root.style.setProperty('--accent-2',cfg.accent2); root.style.setProperty('--accent-rgb',cfg.rgb); if(save)localStorage.setItem(ACCENT_KEY,name||'violet'); renderAccentPicker(); }
+function renderAccentPicker(){ const box=$('#themeSwatches'); if(!box)return; box.innerHTML=Object.entries(ACCENTS).map(([key,cfg])=>`<button type="button" class="theme-swatch" data-accent="${key}" title="${cfg.name}" aria-label="${cfg.name}" style="--swatch:${cfg.accent};--swatch-2:${cfg.accent2}"><span></span><b>${cfg.name}</b></button>`).join(''); box.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>applyAccent(btn.dataset.accent)));}
+function togglePalette(){ const p=$('#themePicker'); if(!p)return; const open=p.classList.toggle('hidden'); $('#paletteToggle').setAttribute('aria-expanded',String(!open)); }
+function closePalette(){ const p=$('#themePicker'); if(p)p.classList.add('hidden'); $('#paletteToggle')?.setAttribute('aria-expanded','false'); }
 function showToast(message,type='success'){ const box=document.createElement('div'); box.className=`toast ${type}`; box.textContent=message; $('#toastRegion').appendChild(box); setTimeout(()=>box.remove(),3400); }
 function escapeHtml(s){ return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#096;'); }
@@ -203,8 +317,12 @@ async function init(){
   setupTheme();
   try{ initSupabase(); await loadRemoteState(); render(); subscribeRealtime(); }
   catch(err){ console.error(err); setConnectionStatus('Database belum terhubung',true); state={courses:clone(seedCourses),changes:[]}; render(); showToast(`Supabase belum siap: ${err.message}`,'error'); }
+  finally { $('#loadingScreen')?.classList.add('hidden'); }
 
   $('#themeToggle').addEventListener('click',toggleTheme);
+  $('#paletteToggle').addEventListener('click',(e)=>{e.stopPropagation();togglePalette();});
+  document.addEventListener('click',(e)=>{if(!e.target.closest('.theme-picker-wrap'))closePalette();});
+  $$('.category-tab').forEach(btn=>btn.addEventListener('click',()=>{ activeCategory=btn.dataset.category; render(); }));
   $('#prevWeek').addEventListener('click',()=>{currentWeek=addDays(currentWeek,-7);render();});
   $('#nextWeek').addEventListener('click',()=>{currentWeek=addDays(currentWeek,7);render();});
   $('#todayButton').addEventListener('click',()=>{currentWeek=startOfWeek(new Date());render();});
@@ -222,4 +340,8 @@ async function init(){
   document.addEventListener('click',(e)=>{const btn=e.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action,courseId=btn.dataset.courseId;if(action==='edit-course')openEditor(courseId,'course');if(action==='edit-meeting')openEditor(courseId,'meeting');});
 }
 
+document.addEventListener('mousemove',(e)=>{
+  document.documentElement.style.setProperty('--mouse-x', `${e.clientX}px`);
+  document.documentElement.style.setProperty('--mouse-y', `${e.clientY}px`);
+});
 document.addEventListener('DOMContentLoaded',init);
