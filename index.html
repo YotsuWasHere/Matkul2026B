@@ -46,6 +46,10 @@
           </div>
         </div>
       </div>
+      <div class="campus-links" aria-label="Portal UNESA">
+        <a class="header-button campus-link" href="https://sso.unesa.ac.id/dashboard" target="_blank" rel="noopener noreferrer" title="Buka SSO UNESA">🔐 <span>SSO</span></a>
+        <a class="header-button campus-link" href="https://sindig.unesa.ac.id/?home=1" target="_blank" rel="noopener noreferrer" title="Buka SINDIG UNESA">📚 <span>SINDIG</span></a>
+      </div>
       <button class="header-button" id="loginButton" type="button">🔐 Login PJ</button>
       <button class="header-button hidden" id="logoutButton" type="button">↩ Logout</button>
     </div>
@@ -199,6 +203,78 @@
         </div>
       </form>
     </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="courseDetailModal" role="dialog" aria-modal="true" aria-labelledby="courseDetailTitle">
+    <div class="modal-card course-detail-modal">
+      <button class="modal-close" data-close="courseDetailModal" aria-label="Tutup">×</button>
+      <div class="editor-kicker">COURSE DETAILS</div>
+      <h2 id="courseDetailTitle">Mata Kuliah</h2>
+      <p class="modal-description" id="courseDetailSchedule">—</p>
+      <div class="course-detail-info-grid">
+        <div class="course-detail-info-item"><span>👨‍🏫 Dosen Pengampu</span><strong id="courseDetailLecturer">—</strong></div>
+        <div class="course-detail-info-item"><span>💻 Mode</span><strong id="courseDetailMode">—</strong></div>
+      </div>
+      <form id="courseDetailForm" class="form-stack">
+        <input type="hidden" id="courseDetailCourseId" />
+        <label class="task-toggle-row"><span><strong>📝 Mata kuliah ini ada tugas</strong><small>Indikator 📝 akan muncul di kartu jadwal.</small></span><input id="courseDetailTask" type="checkbox" /></label>
+        <label id="courseDetailDeadlineWrap">Deadline tugas<input id="courseDetailDeadline" type="date" /><small class="field-hint">Tanggal deadline hanya tampil di panel detail.</small></label>
+        <label>📌 Notes / Catatan<textarea id="courseDetailNotes" rows="4" placeholder="Contoh: Tugas ada di LMS, kelompok 3, dikumpulkan PDF."></textarea></label>
+        <div class="shortcut-section">
+          <div class="shortcut-heading"><strong>⚡ Quick Shortcut</strong><span>Link tersimpan di perangkat ini.</span></div>
+          <div id="courseDetailLinks" class="shortcut-links"></div>
+        </div>
+        <label>📚 Link SiDia / materi<input id="courseDetailSidia" type="url" placeholder="https://..." /></label>
+        <label>📝 Link tugas asli<input id="courseDetailTaskUrl" type="url" placeholder="https://..." /></label>
+        <div class="form-actions"><button class="ghost-button" data-close="courseDetailModal" type="button">Batal</button><button class="primary-button" type="submit">Simpan Detail</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="game-launcher-wrap">
+    <button class="game-launcher" id="gameLauncher" type="button" aria-expanded="false" aria-controls="gamePanel" aria-label="Buka Game Zone" title="Game Zone">
+      <span class="game-launcher-icon">🎮</span>
+      <span class="game-launcher-pulse"></span>
+    </button>
+
+    <section class="game-panel hidden" id="gamePanel" aria-label="Game Zone">
+      <div class="game-panel-header" id="gamePanelHandle">
+        <div>
+          <div class="game-panel-kicker">WAITING ROOM</div>
+          <h2 id="gamePanelTitle">🎮 Game Zone</h2>
+        </div>
+        <div class="game-panel-head-actions">
+          <span class="game-coin-badge"><span aria-hidden="true">🪙</span><strong id="gameCoinBalance">0</strong></span>
+          <button class="game-panel-close" id="gamePanelClose" type="button" aria-label="Tutup Game Zone">×</button>
+        </div>
+      </div>
+      <div class="game-panel-body">
+        <div id="gameMenuView">
+          <p class="game-panel-subtitle">Main sebentar sambil nunggu dosen masuk. Semua game bisa diulang kapan saja.</p>
+          <div class="game-list">
+            <button class="game-card" type="button" data-game="pet">
+              <span class="game-card-icon">🐾</span><span><strong>Raise Pets</strong><small>Rawat pet, naikkan level, kumpulkan EXP.</small></span><span class="game-card-arrow">→</span>
+            </button>
+            <button class="game-card" type="button" data-game="tap">
+              <span class="game-card-icon">⚡</span><span><strong>Tap Speed</strong><small>Pencet secepat mungkin selama 5 detik.</small></span><span class="game-card-arrow">→</span>
+            </button>
+            <button class="game-card" type="button" data-game="quiz">
+              <span class="game-card-icon">🧠</span><span><strong>Quick Quiz</strong><small>5 soal cepat seputar kuliah dan digital.</small></span><span class="game-card-arrow">→</span>
+            </button>
+            <button class="game-card" type="button" data-game="coin">
+              <span class="game-card-icon">🪙</span><span><strong>Coin Rush</strong><small>Kejar coin selama 20 detik.</small></span><span class="game-card-arrow">→</span>
+            </button>
+            <button class="game-card" type="button" data-game="gacha">
+              <span class="game-card-icon">🎲</span><span><strong>Mini Gacha</strong><small>Pakai coin untuk mencoba keberuntungan.</small></span><span class="game-card-arrow">→</span>
+            </button>
+          </div>
+        </div>
+        <div id="gamePlayView" class="hidden">
+          <button class="game-back-button" id="gameBackButton" type="button">← Kembali ke Game Zone</button>
+          <div id="gameContent"></div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <footer class="site-footer">

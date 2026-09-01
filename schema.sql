@@ -83,13 +83,17 @@ insert into public.pj (name,nim,role) values
 ('Ayank Naura Tita','26112224077','admin')
 on conflict (name) do update set nim=excluded.nim, role='admin';
 
+-- Pastikan seed Literasi Digital 050/051 tersedia dan perubahan jadwal lamanya tidak rusak.
+delete from public.meeting_changes where course_id in ('literasi-050','literasi-051');
+delete from public.courses where id in ('literasi-050','literasi-051');
+
 insert into public.courses (id,name,code,original_day,original_start,original_end,room,mode,lecturer,status) values
 ('pancasila-067','Pancasila','067',0,'08:40','10:20','', 'Virtual','', 'Tetap'),
 ('pancasila-068','Pancasila','068',0,'08:40','10:20','', 'Virtual','', 'Tetap'),
+('literasi-050','Literasi Digital','050',4,'07:00','08:40','', 'Virtual','', 'Tetap'),
+('literasi-051','Literasi Digital','051',2,'07:00','08:40','', 'Virtual','', 'Tetap'),
 ('etika-bisnis-profesi','Etika Bisnis & Profesi','',1,'09:30','12:00','MG1.02.07','Tatap Muka','', 'Tetap'),
 ('hukum-bisnis','Hukum Bisnis','',1,'13:00','15:30','', 'Virtual','', 'Tetap'),
-('literasi-050','Literasi Digital','050',2,'07:00','08:40','', 'Virtual','', 'Tetap'),
-('literasi-051','Literasi Digital','051',2,'07:00','08:40','', 'Virtual','', 'Tetap'),
 ('akuntansi-pengantar','Akuntansi Pengantar','',2,'13:00','15:30','MG1.02.07','Tatap Muka','', 'Tetap'),
 ('hukum-pajak','Hukum Pajak','',3,'13:00','15:30','MG1.04.03','Tatap Muka','', 'Tetap'),
 ('sistem-informasi-akuntansi','Sistem Informasi Akuntansi','',3,'15:30','18:00','MG1.02.07','Tatap Muka','', 'Tetap'),
