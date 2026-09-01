@@ -392,7 +392,31 @@ async function saveCourse(e){
   e.preventDefault(); if(!loggedInAs) return;
   const c=state.courses.find(x=>x.id===$('#courseIdField').value); if(!c) return;
   const payload={p_name:loggedInAs.name,p_code:loggedInAs.code,p_course_id:c.id,p_course_name:$('#courseName').value.trim(),p_code_value:$('#courseCode').value.trim(),p_day:Number($('#courseDay').value),p_start:$('#courseStart').value,p_end:$('#courseEnd').value,p_room:$('#courseRoom').value.trim(),p_mode:$('#courseMode').value,p_lecturer:$('#courseLecturer').value.trim(),p_status:$('#courseStatus').value};
-  try{ const {error}=await supabaseClient.rpc('update_course_by_pj',payload); if(error) throw error; closeModal('editorModal'); await refreshRemoteState(true); showToast('Jadwal original berhasil disimpan ke Supabase.','success'); }
+  try{
+    const {error}=await supabaseClient.rpc('update_course_by_pj',payload);
+    if(error) throw error;
+
+    // A permanent/base schedule must be visible immediately in the currently
+    // selected week. A stale weekly override from an earlier test would
+    // otherwise take precedence over the new original schedule. Clear only
+    // this course's override for the currently selected week; overrides in
+    // other weeks remain untouched.
+    const currentWeekKey=weekKey(currentWeek);
+    const existingCurrentWeek=getChange(c.id,currentWeekKey);
+    if(existingCurrentWeek){
+      const {error:changeError}=await supabaseClient.rpc('delete_meeting_change_by_pj',{
+        p_name:loggedInAs.name,
+        p_code:loggedInAs.code,
+        p_course_id:c.id,
+        p_week_key:currentWeekKey
+      });
+      if(changeError) throw changeError;
+    }
+
+    closeModal('editorModal');
+    await refreshRemoteState(true);
+    showToast('Jadwal original berhasil disimpan dan override minggu ini diselaraskan.','success');
+  }
   catch(err){ console.error(err); showToast(`Gagal menyimpan jadwal: ${err.message}`,'error'); }
 }
 async function saveMeeting(e){
