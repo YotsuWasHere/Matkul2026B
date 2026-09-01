@@ -219,10 +219,10 @@ function canonicalMkwkSeedByCode(code){
 }
 function normalizeCourseRows(courses){
   const list=Array.isArray(courses)?courses.map(clone):[];
-  // MKWK uses the exact same two-record model as Pancasila: each code is its own
-  // course, with a canonical original day/time. Weekly overrides are then applied
-  // independently through meeting_changes. This prevents a stale/malformed remote
-  // day from making one of the paired codes disappear from the calendar.
+  // MKWK keeps each code as a real, independent course record.
+  // IMPORTANT: never overwrite an existing database schedule here.
+  // This function is only a safety net for missing seed rows; permanent edits
+  // made through update_course_by_pj must survive reload/realtime refresh.
   for(const code of ['067','068','050','051']){
     const canonical=canonicalMkwkSeedByCode(code);
     const idx=list.findIndex(c=>normalizeCourseCode(c?.code)===code &&
@@ -233,24 +233,23 @@ function normalizeCourseRows(courses){
     }
     if(canonical){
       const current=list[idx];
-      // Preserve database identity/details, but normalize the base schedule exactly.
-      // Any weekly move remains in meeting_changes and is not overwritten here.
       list[idx]={...current,
         id: current.id || canonical.id,
         name: current.name || canonical.name,
-        code: code,
-        day: canonical.day,
-        start: canonical.start,
-        end: canonical.end,
+        code: normalizeCourseCode(current.code)||code,
+        day: Number.isInteger(Number(current.day)) ? Number(current.day) : canonical.day,
+        start: current.start ? String(current.start).slice(0,5) : canonical.start,
+        end: current.end ? String(current.end).slice(0,5) : canonical.end,
         room: current.room ?? canonical.room,
         mode: current.mode || canonical.mode,
-        lecturer: current.lecturer || canonical.lecturer,
+        lecturer: current.lecturer ?? canonical.lecturer,
         status: current.status || canonical.status
       };
     }
   }
   return list;
 }
+
 function groupEffectiveCourses(courses){
   const groups=new Map();
   for(const course of courses){
